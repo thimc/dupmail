@@ -1,14 +1,13 @@
 # dupmail
 
 dupmail scans a directory that (presumably) contains offline e-mail
-files. The program assumes that there's a Message-ID header stored
-in each file.
+files. The program deems a mail a duplicate by comparing the Message-ID header
+and in case there isn't one the mail is simply skipped.
 
 These mails are typically fetched by a program such as OfflineIMAP,
 mbsync or fdm and should work nicely with any of them.
 
-On exit it summarizes how many mails it iterated over and how many
-were duplicates.
+On exit dupmail will print the file paths of all the duplicates.
 
 ## Installation
 

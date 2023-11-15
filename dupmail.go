@@ -4,106 +4,107 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"log"
+	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 )
 
-type MailFile struct {
-	filepath, msgid string
-}
-
-var (
-	MessageHeader   = "Message-ID:"
-	re              *regexp.Regexp
-	mails           []MailFile
-	duplicates      int
-	directoryFlag   = flag.String("d", "", "directory to be scanned")
-	verboseFlag     = flag.Bool("v", false, "increase verbosity")
-	keepFilesFlag   = flag.Bool("n", false, "don't remove any files, just display the statistics")
-	exitOnErrorFlag = flag.Bool("e", false, "exit on error or if missing mail header")
+const (
+	MessageHeader = "message-id:"
 )
 
-func init() {
-	re = regexp.MustCompile(`<([^>]+)>`)
+var (
+	directoryFlag   = flag.String("d", "", "maildir to be scanned")
+	noOperationFlag = flag.Bool("n", false, "scan the maildir but do not delete any files")
+	summarizeFlag   = flag.Bool("s", false, "print a summary instead of the file paths of the duplicates")
+	verboseFlag     = flag.Bool("v", false, "increase verbosity")
+
+	mails      int
+	duplicates map[string][]string
+)
+
+func usage() {
+	fmt.Fprintf(os.Stderr, "Usage for %s\n", filepath.Base(os.Args[0]))
+	flag.PrintDefaults()
 }
 
-func duplicateMail(messageId string) (MailFile, bool) {
-	for _, k := range mails {
-		if k.msgid == messageId {
-			return k, true
+func traverse(path string, info fs.FileInfo, err error) error {
+	if err != nil || info.IsDir() {
+		return err
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.Split(scanner.Text(), " ")
+		if len(line) < 2 {
+			continue
+		}
+		var messageHeader string = strings.Join(line[1:], " ")
+		if strings.ToLower(line[0]) == MessageHeader {
+			duplicates[messageHeader] = append(duplicates[messageHeader], path)
+			mails++
+			return nil
 		}
 	}
-	return MailFile{}, false
-}
-
-func handleDirectory(dirPath string) {
-	err := filepath.Walk(dirPath,
-		func(path string, info os.FileInfo, err error) error {
-			if err != nil || info.IsDir() {
-				return err
-			}
-
-			f, err := os.Open(path)
-			if err != nil {
-				panic(err)
-			}
-			defer f.Close()
-			messageId := ""
-
-			scanner := bufio.NewScanner(f)
-			for scanner.Scan() {
-				match := strings.Contains(scanner.Text(), MessageHeader)
-				if match {
-					messageId = fmt.Sprint(re.FindAllString(scanner.Text(), 1))
-				}
-			}
-			// TODO: The way we determine if the file has a Message-ID header
-			// is to check whether it's length is greater than 3 bytes.
-			// In my case I have had mails where there's a field for the ID
-			// itself but there isn't actually a *real* value there.
-			if len(messageId) < 4 {
-				if *exitOnErrorFlag {
-					log.Printf("Missing header: %v\n", path)
-					os.Exit(1)
-				}
-				return nil
-			}
-			m := MailFile{filepath: path, msgid: messageId}
-			if err := scanner.Err(); err != nil {
-				panic(err)
-			}
-
-			if match, duplicate := duplicateMail(m.msgid); !duplicate {
-				mails = append(mails, m)
-				return nil
-			} else {
-				duplicates++
-				if *verboseFlag {
-					log.Printf("Duplicate header: %v %v", match.msgid, match.filepath)
-				}
-				if *keepFilesFlag == false {
-					err = os.Remove(m.filepath)
-					if err != nil {
-						panic(err)
-					}
-				}
-			}
-
-			return nil
-		})
-	if err != nil {
-		panic(err)
+	if *verboseFlag {
+		fmt.Fprintf(os.Stderr, "warning: missing message-id header %s\n", path)
 	}
+	// return fmt.Errorf("Missing header in %s", path)
+	return nil
 }
 
 func main() {
 	flag.Parse()
-	if _, err := os.Stat(*directoryFlag); err != nil {
+
+	_, err := os.Stat(*directoryFlag)
+	if err != nil {
+		if len(flag.Args()) > 0 {
+			fmt.Fprintf(os.Stderr, "%s\n", err)
+		}
+		usage()
+		os.Exit(1)
+	}
+
+	duplicates = make(map[string][]string)
+
+	if err := filepath.Walk(*directoryFlag, traverse); err != nil {
 		panic(err)
 	}
-	handleDirectory(*directoryFlag)
-	fmt.Printf("Found %d mails (%d duplicates)\n", len(mails), duplicates)
+
+	if *summarizeFlag {
+		fmt.Printf("%d mail(s)\n", mails)
+		fmt.Printf("%d duplicate(s)\n", mails-len(duplicates))
+	}
+
+	for hdr, dups := range duplicates {
+		if len(dups) < 2 {
+			continue
+		}
+		for j, dup := range dups {
+			if !*verboseFlag && j < 1 {
+				continue
+			}
+			if !*summarizeFlag {
+				if *verboseFlag {
+					fmt.Printf("%s\t", hdr)
+				}
+				fmt.Println(dup)
+			}
+			if !*noOperationFlag {
+				if err := os.Remove(dup); err != nil {
+					panic(err)
+				}
+			}
+		}
+		if *verboseFlag {
+			fmt.Println()
+		}
+	}
 }

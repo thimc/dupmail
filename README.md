@@ -11,7 +11,7 @@ On exit dupmail will print the file paths of all the duplicates.
 
 ## Installation
 
-    $ go build -o dupmail main.go
+    $ go build -o dupmail dupmail.go
     # cp dupmail /usr/local/bin/
 
 ## Usage

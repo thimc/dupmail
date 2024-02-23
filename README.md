@@ -22,4 +22,4 @@ On exit dupmail will print the file paths of all the duplicates.
 * `-n`	scan the maildir but do not delete any files
 * `-s`	print a summary instead of the file paths of the duplicates
 * `-v`  increase verbosity. Dupmail will print out the duplicates
-in a very script friendly "<Message-ID> <TAB> <File Path>" format.
+in a very script friendly "\<Message-ID> \<TAB> \<File Path>" format.

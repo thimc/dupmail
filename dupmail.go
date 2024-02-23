@@ -19,9 +19,11 @@ var (
 	noOperationFlag = flag.Bool("n", false, "scan the maildir but do not delete any files")
 	summarizeFlag   = flag.Bool("s", false, "print a summary instead of the file paths of the duplicates")
 	verboseFlag     = flag.Bool("v", false, "increase verbosity")
+	exitOnErrorFlag = flag.Bool("e", false, "exit once a mail without a message-id has been found")
 
-	mails      int
-	duplicates map[string][]string
+	mails          int
+	duplicates     map[string][]string
+	missingHeaders []string
 )
 
 func usage() {
@@ -40,23 +42,32 @@ func traverse(path string, info fs.FileInfo, err error) error {
 	}
 	defer file.Close()
 
+	var messageHeader string
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := strings.Split(scanner.Text(), " ")
 		if len(line) < 2 {
 			continue
 		}
-		var messageHeader string = strings.Join(line[1:], " ")
+		messageHeader = strings.Join(line[1:], " ")
 		if strings.ToLower(line[0]) == MessageHeader {
 			duplicates[messageHeader] = append(duplicates[messageHeader], path)
 			mails++
 			return nil
 		}
 	}
-	if *verboseFlag {
-		fmt.Fprintf(os.Stderr, "warning: missing message-id header %s\n", path)
+	if err := scanner.Err(); err != nil {
+		return err
 	}
-	// return fmt.Errorf("Missing header in %s", path)
+	if *verboseFlag {
+		if !*summarizeFlag {
+			fmt.Fprintf(os.Stderr, "warning: missing message-id header %s\n", path)
+		}
+		missingHeaders = append(missingHeaders, path)
+	}
+	if *exitOnErrorFlag {
+		return fmt.Errorf("Missing header in %s", path)
+	}
 	return nil
 }
 
@@ -79,21 +90,24 @@ func main() {
 	}
 
 	if *summarizeFlag {
-		fmt.Printf("%d mail(s)\n", mails)
-		fmt.Printf("%d duplicate(s)\n", mails-len(duplicates))
+		fmt.Fprintf(os.Stderr, "%d mail(s)\n", mails)
+		fmt.Fprintf(os.Stderr, "%d duplicate(s)\n", mails-len(duplicates))
+		if *verboseFlag {
+			fmt.Fprintf(os.Stderr, "%d mail(s) are missing the \"%s\" header\n", len(missingHeaders), MessageHeader[:len(MessageHeader)-1])
+		}
 	}
 
-	for hdr, dups := range duplicates {
+	for msgid, dups := range duplicates {
 		if len(dups) < 2 {
 			continue
 		}
-		for j, dup := range dups {
-			if !*verboseFlag && j < 1 {
+		for n, dup := range dups {
+			if !*verboseFlag && n < 1 {
 				continue
 			}
 			if !*summarizeFlag {
 				if *verboseFlag {
-					fmt.Printf("%s\t", hdr)
+					fmt.Printf("%s\t", msgid)
 				}
 				fmt.Println(dup)
 			}
@@ -103,8 +117,9 @@ func main() {
 				}
 			}
 		}
-		if *verboseFlag {
-			fmt.Println()
-		}
+	}
+
+	if len(duplicates) > 1 {
+		os.Exit(1)
 	}
 }

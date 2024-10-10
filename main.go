@@ -68,6 +68,7 @@ func main() {
 				mail[msgid] = true
 				continue
 			}
+			dups++
 			fmt.Printf("%s\t%s\n", msgid, path)
 			if *noop {
 				continue
@@ -75,7 +76,6 @@ func main() {
 			if err := os.Remove(path); err != nil {
 				return err
 			}
-			dups++
 			return nil
 		}
 		return nil

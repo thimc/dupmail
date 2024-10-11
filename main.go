@@ -83,5 +83,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "walk %q: %s\n", *dirpath, err)
 		os.Exit(1)
 	}
-	fmt.Printf("processed %d mails in %.2fs. %d duplicates found\n", mails, time.Since(start).Seconds(), dups)
+	fmt.Fprintf(os.Stderr, "processed %d mail(s) in %.2fs. ", mails, time.Since(start).Seconds())
+	if dups > 0 {
+		fmt.Fprintf(os.Stderr, "%d duplicate(s) found.", dups)
+	}
+	fmt.Fprintln(os.Stderr)
 }

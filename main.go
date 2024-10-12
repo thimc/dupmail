@@ -62,14 +62,14 @@ func main() {
 			}
 			var (
 				parts = strings.Split(ln[:len(ln)-1], " ")
-				msgid = strings.Join(parts[1:], "")
+				msgid = strings.Trim(strings.Join(parts[1:], ""), "<>")
 			)
 			if !mail[msgid] {
 				mail[msgid] = true
 				continue
 			}
 			dups++
-			fmt.Printf("%s\t%s\n", msgid, path)
+			fmt.Printf("%s\t%s\n", path, msgid)
 			if *noop {
 				continue
 			}
